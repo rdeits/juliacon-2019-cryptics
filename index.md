@@ -33,6 +33,8 @@ Slides: [rdeits.github.com/juliacon-2019-cryptics](http://rdeits.github.com/juli
     * Helped write (with >100 of my closest friends) the [2018 MIT Mystery Hunt](https://www.mit.edu/~puzzle/2018/)
     * Helped write 13th and 15th Boston Area Puzzle Hunt League (BAPHL) puzzle hunts
     * Spent more money on escape rooms than I am willing to admit
+    * Wrote a cryptic crossword solver in Python back in 2013:
+        * [blog.robindeits.com/2013/02/11/a-cryptic-crossword-clue-solver/](http://blog.robindeits.com/2013/02/11/a-cryptic-crossword-clue-solver/)
 
 ----
 
@@ -178,11 +180,123 @@ Slides: [rdeits.github.com/juliacon-2019-cryptics](http://rdeits.github.com/juli
 
 ----
 
+### Parsing
 
+* The first step in solving a clue is figuring out what each of the words might do. Here are a few ways to parse the clue "They primarily play Diplomacy (4)":
 
-* The cryptic crossword solver has a few components, all of which are implemented entirely in Julia:
-    * [rdeits/ChartParsers.jl](https://github.com/rdeits/ChartParsers.jl) implements the low-level parsing logic which turns cryptic clues into all of the possible combinations of wordplay and definitions they could represent.
-    * [rdeits/CrypticCrosswords.jl](https://github.com/rdeits/CrypticCrosswords.jl) includes a context-free grammar representing the structure of a cryptic clue as well as implementations of a variety of wordplay techniques.
-    * [rdeits/CrypticServer.jl](https://github.com/rdeits/CrypticServer.jl) includes a very simple web server built on top of Mux.jl to host an interactive cryptic crossword solver.
+<img src="static/img/they-primarily-play-diplomacy-1.svg" />
 
 ----
+
+### Parsing
+
+* The first step in solving a clue is figuring out what each of the words might do. Here are a few ways to parse the clue "They primarily play Diplomacy (4)":
+
+<img src="static/img/they-primarily-play-diplomacy-2.svg" />
+
+----
+
+### Parsing
+
+* The first step in solving a clue is figuring out what each of the words might do. Here are a few ways to parse the clue "They primarily play Diplomacy (4)":
+
+<img src="static/img/they-primarily-play-diplomacy-3.svg" />
+
+----
+
+### Parsing
+
+* How do we produce all of these trees?
+    * Trying to assign every possible meaning to every single word is computationally overwhelming and will produce lots of nonsense (like an anagram without a matching anagram indicator).
+* Fortunately, this is actually a very well-studied problem in linguistics.
+
+----
+
+### Parsing Human Language
+
+* Linguists make sense of human language by building exactly the same kinds of tree structures:
+
+<img src="static/img/she-ate-the-apple.svg" />
+
+----
+
+### Parsing
+
+* To parse text into its possible trees, we need two things: a *grammar* and a *parser*
+    * A grammar describes all of the components that can be part of a tree and how those pieces can be composed. For example:
+        * clue &rarr; wordplay + definition
+        * wordplay &rarr; substring
+        * substring &rarr; substring indicator + literal
+        * wordplay &rarr; anagram
+        * anagram &rarr; anagram_indicator + literal
+    * A parser takes a grammar and a list of words and produces all of the possible trees supported by that grammar
+
+----
+
+### Parsing Cryptic Clues
+
+* The grammar of cryptic crosswords is particularly difficult because:
+    * It is ambiguous (there are many grammatically valid ways to parse a given clue)
+    * It is recursive (a wordplay can be made up of other wordplays which are in turn made up of other wordplays...).
+* To support parsing this grammar, I created [rdeits/ChartParsers.jl](https://github.com/rdeits/ChartParsers.jl), featuring:
+    * Top-down and bottom-up chart parsers for arbitrary grammars, implemented in pure Julia
+    * Support for probabilistic grammars
+    * Iterator interface for terminating parsing early
+
+----
+
+### Aside: Chart Parsers
+
+* Chart parsers are a special class of parser designed to be very efficient, even for long sentences and complex grammars.
+* They use dynamic programming to ensure that a given subtree is built only once, even if it is used in many other trees.
+* They can also be designed to support probabilistic grammars, in which each rule in the grammar also provides a score indicating how likely it is that the rule applies to the given inputs.
+
+----
+
+### Parsing Cryptic Clues
+
+* Here's what it looks like to parse a cryptic clue:
+
+```julia
+julia> using CrypticCrosswords: ChartParser, CrypticsGrammar
+
+julia> tokens = ["spin", "broken", "shingle"];
+
+julia> parser = ChartParser(tokens, CrypticsGrammar());
+
+julia> collect(Iterators.take(parser, 5))
+5-element Array{ChartParsers.Arc{CrypticCrosswords.Rule},1}:
+ (1, 2, AnagramIndicator -> "broken"  (0.96))
+ (2, 3, Token -> "shingle"  (0.034))
+ (2, 3, Phrase -> "shingle"  (0.034))
+ (2, 3, StraddleIndicator -> (2, 3, Phrase -> "shingle"  (0.034))  (0.034))
+ (2, 3, Definition -> (2, 3, Phrase -> "shingle"  (0.034))  (0.034))
+ ```
+
+ * Each line of output is one potential subtree, along with its probability score
+
+----
+
+### Parsing Cryptic Clues
+
+* We can also ask the parser to only produce *complete* parse trees:
+
+```julia
+julia> collect(Iterators.take(
+           Iterators.filter(is_complete(parser), parser), 2))
+2-element Array{ChartParsers.Arc{CrypticCrosswords.Rule},1}:
+ (0, 3, Clue ->
+    (0, 1, Definition -> (0, 1, Phrase -> "spin"  (0.034))  (0.034))
+    (1, 3, Wordplay ->
+        (1, 3, Anagram ->
+            (1, 2, AnagramIndicator -> "broken"  (0.96))
+            (2, 3, JoinedPhrase -> (2, 3, Literal -> "shingle"  (0.034))  (0.034))  (0.017))  (0.00096))  (0.00024))
+ (0, 3, Clue ->
+    (0, 2, Wordplay ->
+        (0, 2, Anagram ->
+            (0, 1, JoinedPhrase -> (0, 1, Literal -> "spin"  (0.034))  (0.034))
+            (1, 2, AnagramIndicator -> "broken"  (0.96))  (0.017))  (0.00096))
+    (2, 3, Definition -> (2, 3, Phrase -> "shingle"  (0.034))  (0.034))  (0.00024))
+```
+
+
