@@ -33,16 +33,24 @@ Slides: [rdeits.github.com/juliacon-2019-cryptics](http://rdeits.github.com/juli
     * Helped write (with >100 of my closest friends) the [2018 MIT Mystery Hunt](https://www.mit.edu/~puzzle/2018/)
     * Helped write 13th and 15th Boston Area Puzzle Hunt League (BAPHL) puzzle hunts
     * Spent more money on escape rooms than I am willing to admit
-    * Wrote a cryptic crossword solver in Python back in 2013:
-        * [blog.robindeits.com/2013/02/11/a-cryptic-crossword-clue-solver/](http://blog.robindeits.com/2013/02/11/a-cryptic-crossword-clue-solver/)
 
 ----
 
-### Cryptic (a.k.a. British-Style) Crosswords
+### Background
 
-* If you enjoy crosswords but wish they had more esoteric rules and vocabulary to memorize, then...
-    1. You're not entirely normal (that's OK)
-    2. Cryptic crosswords may be for you
+* I learned about cryptic crosswords through the MIT Mystery Hunt, and I was fascinated by the way they have their own rules and vocabulary.
+* Ever since I learned how to solve them myself, I've been interested in seeing if I could write a program to solve them for me.
+* I wrote my first cryptic crossword solver in Python back in 2013:
+    * [blog.robindeits.com/2013/02/11/a-cryptic-crossword-clue-solver/](http://blog.robindeits.com/2013/02/11/a-cryptic-crossword-clue-solver/)
+* Last year, I decided to rewrite it from scratch in Julia to create a faster and more capable solver.
+
+----
+
+### Outline
+
+* What is a cryptic crossword clue?
+* How can we solve them automatically?
+* Why was Julia a good choice?
 
 ----
 
@@ -63,7 +71,7 @@ Slides: [rdeits.github.com/juliacon-2019-cryptics](http://rdeits.github.com/juli
 
 * Cryptic crosswords have clues which operate differently.
 * Each clue points to a single answer in *two different ways*, typically by providing a *definition* and a *wordplay*, mixed together to obscure which part is which.
-* This is much easier to explain by example.
+* This is much easier to explain by example:
 
 ----
 
@@ -122,7 +130,7 @@ Slides: [rdeits.github.com/juliacon-2019-cryptics](http://rdeits.github.com/juli
 * CrypticCrosswords.jl is a Julia tool designed to do exactly the process I described above: breaking a cryptic clue up into its wordplay and definition and finding an answer which is a good match for both.
 * It can't solve every cryptic clue, but it often does a pretty good job...
 * You can find an interactive version of the solver at <http://cryptics.robindeits.com>
-    * Note that this is running on a single under-powered web server, so you will get better performance runnning the code yourself.
+    * Note that this is running on a single under-powered web server, so you will get better performance running the code yourself.
 
 ----
 
@@ -282,7 +290,7 @@ julia> collect(Iterators.take(parser, 5))
 * We can also ask the parser to only produce *complete* parse trees:
 
 ```julia
-julia> collect(Iterators.take(
+julia> parsed_trees = collect(Iterators.take(
            Iterators.filter(is_complete(parser), parser), 2))
 2-element Array{ChartParsers.Arc{CrypticCrosswords.Rule},1}:
  (0, 3, Clue ->
@@ -299,4 +307,172 @@ julia> collect(Iterators.take(
     (2, 3, Definition -> (2, 3, Phrase -> "shingle"  (0.034))  (0.034))  (0.00024))
 ```
 
+----
 
+### Solving a Parsed Clue
+
+* Once we've built up our parse trees, we need to try to solve them.
+    * Solving a tree means applying the appropriate wordplay functions to produce a list of output words.
+    * For example, solving clue whose wordplay is `(Anagram -> AnagramIndicator "broken", Literal "shingle")` means finding all of the anagrams of "shingle".
+* Some parse trees do not produce any outputs, so we discard them
+    * For example, we might find a word which has no valid English anagrams
+
+----
+
+### Solving a Parsed Clue
+
+* Let's try solving the two parses we found earlier:
+
+```julia
+julia> state = SolverState();
+
+# (Clue (Definition "spin") (Wordplay (Anagram (AnagramIndicator "broken") "shingle")))
+julia> solve!(state, parsed_trees[1])
+Set(["english"])
+
+# (Clue (Wordplay (Anagram "spin" (AnagramIndicator "broken"))) (Definition "shingle")
+julia> solve!(state, parsed_trees[2])
+Set(["nips", "snip", "pins", "insp"])
+```
+
+----
+
+### Evaluating Solutions
+
+* We now have a list of possible parses and the outputs from solving each parse. We need some way to determine which one is the best.
+    * We do this by trying to determine if the output of the wordplay matches the definition part.
+    * The `solution_quality` function returns a number between 0 and 1 indicating how well the given output matches the definition:
+
+```julia
+julia> solution_quality(parsed_trees[1], "english")
+1.0
+
+julia> solution_quality(parsed_trees[2], "snip")
+0.5454545454545454
+```
+
+----
+
+### Measuring Solution Quality
+
+* Checking if a word "matches" a definition is easier said than done. We can (and do) use a thesaurus to check if two words are listed as synonyms, but cryptic definitions are often tricky:
+    * Definitions are often vague, like "those who use needles" for ACUPUNCTURISTS
+    * They may also be intentionally punny, rather than literal, like "slider" for TROMBONIST
+    * Or they may use a general category to clue a specific item, like "drink" for LEMONADE
+* None of those definitions show up word-for-word in the OpenOffice thesaurus database.
+
+----
+
+### Measuring Solution Quality: WordNet
+
+* Instead, we rely on [WordNet](https://wordnet.princeton.edu/) (via WordNet.jl), an incredible hand-curated database of 117,000 groups of related words and their relationships to one another.
+* WordNet contains a complete taxonomy of all of its listed nouns, organized into a tree structure.
+* We can measure the relatedness of two nouns by taking the distance between them in the tree (this is the Wu-Palmer similarity index).
+* Verbs and adjectives are likewise grouped into related sets, so we can measure distance by counting the number of hops required to get from one word to another.
+
+----
+
+### SemanticSimilarity
+
+The `CrypticCrosswords.SemanticSimilarity` module implements Wu-Palmer similarity for nouns, with additional metrics for adjectives and verbs
+
+```julia
+julia> similarity("computer", "laptop")
+0.8333333333333334
+
+julia> similarity("green", "color")
+0.875
+
+julia> similarity("cat", "color")
+0.5714285714285714
+
+julia> similarity("run", "trot")
+0.9090909090909091
+
+julia> similarity("run", "forfeit")
+0.75
+```
+
+----
+
+### Putting it All Together
+
+* We now have all the pieces we need to solve a cryptic crossword:
+    * ChartParsers.jl produces parsed trees
+    * CrypticCrosswords.jl solves the wordplays from those trees
+    * SemanticSimilarity rates how well the wordplay and definitions match
+* All we have to do is return the answer with the best match.
+
+----
+
+### Interactive Demo
+
+* You can try out a demo of the solver at <http://cryptics.robindeits.com>
+* The web interface itself is implemented in [rdeits/CrypticServer.jl](https://github.com/rdeits/CrypticServer.jl) and powered by Mux.jl.
+
+----
+
+### Why Julia
+
+* Julia worked very well for this project, and the reasons are probably not surprising:
+    * Performance
+    * Multiple dispatch
+    * Low-level control when necessary
+
+----
+
+### Why Julia: Performance
+
+* The major bottleneck of the old Python solver was in building the parse trees, for which I relied on the `nltk` python package.
+* `nltk` is great, but by rewriting the parser in Julia I was able to improve the baseline performance but, more importantly, I was able to improve the algorithmic efficiency by combining parsing and solving:
+    * Rather than waiting for a complete parse, with ChartParsers.jl I can try solving *partial* parse trees, eliminating any subtrees which don't produce any valid wordplay outputs.
+
+----
+
+### Why Julia: Multiple Dispatch
+
+* Julia's multiple dispatch also provides a nice way to implement all of the different types of wordplay:
+
+```julia
+apply(head::Anagram, args::Tuple{AnagramIndicator, Phrase}) = ...
+
+apply(head::Substring, args::Tuple{SubstringIndicator, Phrase}) = ...
+
+apply(head::Clue, args::Tuple{Wordplay, Definition}) = ...
+```
+
+----
+
+### Why Julia: Low-level Control
+
+* One bottleneck in a prior version of CrypticCrosswords.jl was simply checking if a string is a valid English word or substring.
+* In particular, I often want to be able to ask questions like:
+    * Is `s` a valid substring in English?
+    * If so, then is `s * c` also a valid substring in English?
+* A `Set{String}` is fast, but hashing `s * c` requires iterating through the entire combined string to generate the hash.
+* Instead, what if could re-use the work we already did when we checked that `s` alone was a valid substring?
+
+----
+
+### Why Julia: Low-level Control
+
+* To improve performance even more, I created a `PTrie`, my own set-like data structure holding a `Base.BitSet`.
+* To check if `s` is in the `PTrie`, I hash `s` character-by-character, then mask off the low-N bits and check if that bit string is in the `BitSet`.
+    * This can produce false positives with low probability.
+    * For this case, that's fine: We only need to eliminate *most* of the nonsense words from the solving process, and we can clean up any false positives later when we check the full output.
+* Moreover, when we check if `s` is in the `PTrie`, we can also return its hash, which we can then use as a starting point to check if `s * c` is in the `PTrie`.
+* Being able to mix bit-level operations with high-level logic is the magic of Julia.
+
+----
+
+### Conclusions
+
+* For more information on the code, check out:
+    * <https://github.com/rdeits/CrypticCrosswords.jl>
+    * <https://github.com/rdeits/ChartParsers.jl>
+    * <https://github.com/rdeits/CrypticServer.jl>
+* To see the demo (if you all haven't crashed it yet), check out:
+    * <http://cryptics.robindeits.com>
+* To practice solving cryptic crosswords, check out:
+    * <http://world.std.com/~wij/puzzles/cru/>
+    * <https://kegler.gitlab.io/Block_style/>
