@@ -20,6 +20,8 @@ Robin Deits
 
 July 23, 2019
 
+Slides: [rdeits.github.com/juliacon-2019-cryptics](http://rdeits.github.com/juliacon-2019-cryptics)
+
 ----
 
 ### Background
