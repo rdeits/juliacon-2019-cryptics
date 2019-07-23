@@ -533,6 +533,17 @@ apply(head::Clue, args::Tuple{Wordplay, Definition}) = ...
 
 ----
 
+### What's Next
+
+* Better semantic similarity
+    * Machine learning (word2vec, phrase2vec, etc.)
+* More accurate grammar probabilities
+    * <http://linguacelta.com/crosswords/index.html>
+* More types of wordplay:
+    * Homophones
+    * Odd and even letters
+    * Ignoring more filler words
+
 ### Conclusions
 
 * For more information on the code, check out:
