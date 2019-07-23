@@ -405,6 +405,74 @@ julia> similarity("run", "forfeit")
 
 ----
 
+### Explaining the Answer
+
+* Parsing the rather dense output of the solver can be tricky, so CrypticCrosswords.jl also knows how to *explain* its results in natural language:
+
+```julia
+julia> tree = parsed_trees[1]
+(0, 3, Clue -> (0, 1, Definition -> (0, 1, Phrase -> "spin"  (0.03448275862068967))  (0.03448275862068967)) (1, 3, Wordplay -> (1, 3, Anagram -> (1, 2, AnagramIndicator -> "broken"  (0.9601536245799324)) (2, 3, JoinedPhrase -> (2, 3, Literal -> "shingle"  (0.03448275862068969))  (0.03448275862068969))  (0.017241379310344845))  (0.0009578544061302691))  (0.00023946360153256728))
+
+julia> solution = first(solve!(state, tree))
+"english"
+
+julia> derivations = derive!(state, SolvedArc(tree, solution, solution_quality(tree, solution)));
+
+julia> explain(derivations[1])
+The answer is "english".
+"spin" is the definition.
+"broken" means to anagram "shingle" to get "english".
+"english" matches "spin" with confidence 100%.
+```
+
+----
+
+### Explaining the Answer
+
+* Let's look at another possible answer and its explanation:
+
+```
+julia> tree = parsed_trees[2]
+(0, 3, Clue -> (0, 2, Wordplay -> (0, 2, Anagram -> (0, 1, JoinedPhrase -> (0, 1, Literal -> "spin"  (0.03448275862068967))  (0.03448275862068967)) (1, 2, AnagramIndicator -> "broken"  (0.9601536245799324))  (0.017241379310344834))  (0.0009578544061302685)) (2, 3, Definition -> (2, 3, Phrase -> "shingle"  (0.03448275862068969))  (0.03448275862068969))  (0.00023946360153256712))
+
+julia> solution = first(solve!(state, tree))
+"pins"
+
+julia> derivations = derive!(state, SolvedArc(tree, solution, solution_quality(tree, solution)));
+
+julia> explain(derivations[1])
+The answer is "pins".
+"broken" means to anagram "spin" to get "pins".
+"shingle" is the definition.
+"pins" matches "shingle" with confidence 74%.
+
+```
+
+----
+
+### Explaining the Answer
+
+* We generate a human-readable explanation by walking down the parse tree, using some hand-written rules to transform tree nodes into descriptive sentences:
+
+```julia
+explain(io::IO, output,
+        ::Anagram, ::Tuple{AnagramIndicator, Any},
+        indicator, argument) =
+    println(io,
+        "\"$(indicator.output)\" means to anagram
+        \"$(argument.output)\" to get \"$(output)\".")
+
+explain(io::IO, output,
+        ::Substring, ::Tuple{AbstractIndicator, Any},
+        (indicator, argument)) =
+    println(io,
+        "\"$(indicator.output)\" means to take
+        a substring of \"$(argument.output)\" to get \"$(output)\".")
+```
+
+
+----
+
 ### Interactive Demo
 
 * You can try out a demo of the solver at <http://cryptics.robindeits.com>
