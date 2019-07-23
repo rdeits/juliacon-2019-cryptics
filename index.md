@@ -54,20 +54,20 @@ Slides: [rdeits.github.com/juliacon-2019-cryptics](http://rdeits.github.com/juli
 
 ----
 
-### Types of Crosswords
+### Types of Crosswords: "American"
 
-* An American-style crossword consists of a grid of letters and clues like:
+* An typical American crossword consists of a grid of letters and clues like:
     * "Initial meetings (6)" (answer: INTROS)
     * "Naked (4)" (answer: BARE)
     * "Spin (7)" (answer: ENGLISH)
 * These clues are often somewhat ambiguous:
-    * "Naked (4)" could also be "NUDE"
+    * "Initial meetings (6)" could also be "BRIEFS"
     * "Spin (7)" could also be "JOYRIDE"
 * The primary way you disambiguate the answers is through filling out the crossword grid.
 
 ----
 
-### Types of Crosswords
+### Types of Crosswords: Cryptic
 
 * Cryptic crosswords have clues which operate differently.
 * Each clue points to a single answer in *two different ways*, typically by providing a *definition* and a *wordplay*, mixed together to obscure which part is which.
@@ -83,7 +83,7 @@ Slides: [rdeits.github.com/juliacon-2019-cryptics](http://rdeits.github.com/juli
     * "Initial meetings disappoint Rosemary internally (6)
 * This might sound like a sentence, but that's a distraction. Instead, we need to split out the *wordplay* and the *definition*
     * In this case, "internally" is a clue to look for letters inside another phrase:
-        * disappoINTROsemary &rarr; INTROS
+        * disappoINTROSemary &rarr; INTROS
     * The remaining words must be the definition:
         * "initial meetings" is a good definition for INTROS
 * We got INTROS both from wordplay and from the definition, so it must be the answer to the clue.
